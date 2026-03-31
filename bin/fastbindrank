@@ -1,0 +1,158 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage:
+  fastbindrank <command> [<subcommand>] [options]
+
+Commands:
+  library prepare-pubchem    Prepare a PubChem-based screening library
+  affinity predict-chunk     Run one chunk of Boltz-2 affinity prediction
+  affinity merge-chunks      Merge chunked affinity predictions
+  iterations prepare         Prepare one iteration's splits and extracted features
+  iterations train           Train one iteration after affinity prediction is ready
+  results summarize-models   Summarize model runs and locate the best last-iteration model
+  results predict-all-best   Predict all library compounds with the selected best model
+  top-hits select            Select top-ranked compounds from full-library predictions
+  top-hits rescore-chunk     Run one chunk of Boltz-2 rescoring for selected top hits
+  top-hits cluster           Merge, annotate, filter, and cluster rescored top hits
+EOF
+}
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [[ $# -lt 1 ]]; then
+  usage >&2
+  exit 1
+fi
+
+command="$1"
+shift
+
+case "$command" in
+  library)
+    if [[ $# -lt 1 ]]; then
+      "$script_dir/commands/library_prepare_pubchem.sh" --help
+      exit 1
+    fi
+    subcommand="$1"
+    shift
+    case "$subcommand" in
+      prepare-pubchem)
+        exec "$script_dir/commands/library_prepare_pubchem.sh" "$@"
+        ;;
+      --help|-h|help)
+        "$script_dir/commands/library_prepare_pubchem.sh" --help
+        ;;
+      *)
+        echo "Unknown library subcommand: $subcommand" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+  iterations)
+    if [[ $# -lt 1 ]]; then
+      echo "Available iterations subcommands: prepare, train" >&2
+      exit 1
+    fi
+    subcommand="$1"
+    shift
+    case "$subcommand" in
+      prepare)
+        exec "$script_dir/commands/iterations_prepare.sh" "$@"
+        ;;
+      train)
+        exec "$script_dir/commands/iterations_train.sh" "$@"
+        ;;
+      --help|-h|help)
+        echo "Available iterations subcommands: prepare, train"
+        ;;
+      *)
+        echo "Unknown iterations subcommand: $subcommand" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+  affinity)
+    if [[ $# -lt 1 ]]; then
+      echo "Available affinity subcommands: predict-chunk, merge-chunks" >&2
+      exit 1
+    fi
+    subcommand="$1"
+    shift
+    case "$subcommand" in
+      predict-chunk)
+        exec "$script_dir/commands/affinity_predict_chunk.sh" "$@"
+        ;;
+      merge-chunks)
+        exec "$script_dir/commands/affinity_merge_chunks.sh" "$@"
+        ;;
+      --help|-h|help)
+        echo "Available affinity subcommands: predict-chunk, merge-chunks"
+        ;;
+      *)
+        echo "Unknown affinity subcommand: $subcommand" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+  results)
+    if [[ $# -lt 1 ]]; then
+      echo "Available results subcommands: summarize-models" >&2
+      exit 1
+    fi
+    subcommand="$1"
+    shift
+    case "$subcommand" in
+      summarize-models)
+        exec "$script_dir/commands/results_summarize_models.sh" "$@"
+        ;;
+      predict-all-best)
+        exec "$script_dir/commands/results_predict_all_best.sh" "$@"
+        ;;
+      --help|-h|help)
+        echo "Available results subcommands: summarize-models, predict-all-best"
+        ;;
+      *)
+        echo "Unknown results subcommand: $subcommand" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+  top-hits)
+    if [[ $# -lt 1 ]]; then
+      echo "Available top-hits subcommands: select, rescore-chunk, cluster" >&2
+      exit 1
+    fi
+    subcommand="$1"
+    shift
+    case "$subcommand" in
+      select)
+        exec "$script_dir/commands/top_hits_select.sh" "$@"
+        ;;
+      rescore-chunk)
+        exec "$script_dir/commands/top_hits_rescore_chunk.sh" "$@"
+        ;;
+      cluster)
+        exec "$script_dir/commands/top_hits_cluster.sh" "$@"
+        ;;
+      --help|-h|help)
+        echo "Available top-hits subcommands: select, rescore-chunk, cluster"
+        ;;
+      *)
+        echo "Unknown top-hits subcommand: $subcommand" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+  --help|-h|help)
+    usage
+    ;;
+  *)
+    echo "Unknown command: $command" >&2
+    usage >&2
+    exit 1
+    ;;
+esac

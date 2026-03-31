@@ -1,0 +1,11 @@
+version: 1
+sequences:
+  - protein:
+      id: A
+      sequence: YOUR_PROTEIN_SEQUENCE
+  - ligand:
+      id: L
+      smiles: '__LIGAND_SMILES__'
+properties:
+  - affinity:
+      binder: L

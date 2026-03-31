@@ -1,0 +1,15 @@
+version: 1
+sequences:
+  - protein:
+      id: A
+      sequence: CHAIN_A_SEQUENCE
+      msa: /path/to/chain_a.a3m
+  - protein:
+      id: B
+      sequence: CHAIN_B_SEQUENCE
+  - ligand:
+      id: L
+      smiles: '__LIGAND_SMILES__'
+properties:
+  - affinity:
+      binder: L
