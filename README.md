@@ -2,7 +2,7 @@
 
 FastBindRank is a command-line distillation workflow that uses affinity predictions from high-fidelity structure-based models to train a fast surrogate ranking model for compound library preparation, iteration-based sampling, model selection, full-library rescoring, and top-hit structural diversity analysis. Boltz-2 is currently used as the teacher model, given its near–free-energy perturbation (FEP) performance in protein–ligand binding affinity prediction. The framework is model-agnostic and can readily incorporate newer or more advanced teacher models as they become available.
 
-<img width="2126" height="1858" alt="Fig  1" src="https://github.com/user-attachments/assets/4bce9636-cd93-440a-bd73-3ce0614c9b2e" />
+<img width="1276" height="1115" alt="Workflow" src="https://github.com/user-attachments/assets/4bce9636-cd93-440a-bd73-3ce0614c9b2e" />
 
 
 ## Workflow Overview
