@@ -55,7 +55,7 @@ chmod +x bin/commands/*.sh
 | `--results-dir` | Directory for iteration outputs, model summaries, best-model bundles, and downstream analysis results. If omitted, the default is `<workspace>/results/`. |
 | `--selection-dir` | Path to a specific best-model selection bundle under `<results-dir>/best_model/`. Use this when you want to operate on one explicit selected model instead of the latest one. |
 | `--protein-name` | Short identifier used for Boltz-2 input and output naming. |
-| `--protein-yaml-template` | Boltz-2 YAML template containing the protein definition(s), ligand block, and affinity property block. Use `__LIGAND_SMILES__` as the ligand SMILES placeholder; `__LIGAND_ID__` is also supported if you want to inject the compound ID. |
+| `--protein-yaml-template` | Boltz-2 YAML template containing the protein definition(s), ligand block, and affinity property block. Use `__LIGAND_SMILES__` as the ligand SMILES placeholder; `__LIGAND_ID__` is also supported if you want to inject the compound ID. For custom MSA runs, include `msa: '__MSA_PATH__'` in the protein block and pass `--msa-path`. |
 
 ### 1. Prepare the library
 
@@ -117,12 +117,29 @@ Key parameters for `iterations prepare`:
 | `--workers` | Number of worker processes used during sampling and extraction. Default: `10`. |
 | `--seed` | Random seed used for reproducible sampling. Default: `42`. |
 
+Example using automatic MSA generation:
+
 ```bash
 bin/fastbindrank affinity predict-chunk \
   --workspace /path/to/workspace \
   --results-dir /path/to/results/project_x \
   --protein-name ExampleTarget \
-  --protein-yaml-template /path/to/example_target.yaml \
+  --protein-yaml-template examples/protein_templates/single_chain.yaml \
+  --iteration 1 \
+  --split training_split \
+  --start-line 1 \
+  --end-line 1000
+```
+
+Example using a precomputed MSA:
+
+```bash
+bin/fastbindrank affinity predict-chunk \
+  --workspace /path/to/workspace \
+  --results-dir /path/to/results/project_x \
+  --protein-name ExampleTarget \
+  --protein-yaml-template examples/protein_templates/single_chain_custom_msa.yaml \
+  --msa-path /path/to/target.a3m \
   --iteration 1 \
   --split training_split \
   --start-line 1 \
@@ -131,21 +148,40 @@ bin/fastbindrank affinity predict-chunk \
 
 The protein YAML template lets you support a single chain, a homodimer such as `id: [A, B]`, or multiple separately defined chains. The template should already contain the full protein definition(s), plus a ligand entry whose SMILES value is `__LIGAND_SMILES__`.
 
+By default, `affinity predict-chunk` runs Boltz-2 with `--use_msa_server`, so Boltz-2 generates MSA data automatically. If you already have a precomputed MSA, pass `--msa-path /path/to/msa.a3m`; FastBindRank will replace `__MSA_PATH__` in the YAML template and will not pass `--use_msa_server`.
+
 Example templates are provided in:
 
 - `examples/protein_templates/single_chain.yaml`
 - `examples/protein_templates/homodimer.yaml`
 - `examples/protein_templates/heterodimer.yaml`
+- `examples/protein_templates/single_chain_custom_msa.yaml`
 
-Example template:
+Example template using automatic MSA generation:
 
 ```yaml
 version: 1
 sequences:
   - protein:
-      id: [A, B]
+      id: A
       sequence: YOUR_SEQUENCE
-      msa: /path/to/msa.a3m
+  - ligand:
+      id: L
+      smiles: '__LIGAND_SMILES__'
+properties:
+  - affinity:
+      binder: L
+```
+
+Example template using a user-provided MSA:
+
+```yaml
+version: 1
+sequences:
+  - protein:
+      id: A
+      sequence: YOUR_SEQUENCE
+      msa: '__MSA_PATH__'
   - ligand:
       id: L
       smiles: '__LIGAND_SMILES__'
@@ -164,6 +200,7 @@ Key parameters for `affinity predict-chunk`:
 | `--boltz` | Boltz-2 executable name or path. |
 | `--boltz-threads` | Preprocessing thread count passed to Boltz-2. Default: `1`. |
 | `--accelerator` | Accelerator passed to Boltz-2, typically `gpu`. |
+| `--msa-path` | Optional precomputed MSA file, such as an `.a3m`. When provided, the YAML template must contain `__MSA_PATH__`, and Boltz-2 is run without `--use_msa_server`. |
 
 Strong recommendation: use `--start-line` and `--end-line` through an HPC job-array workflow so that each GPU job handles a fixed chunk of compounds from the split file.
 
