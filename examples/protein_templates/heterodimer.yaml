@@ -3,7 +3,6 @@ sequences:
   - protein:
       id: A
       sequence: CHAIN_A_SEQUENCE
-      msa: /path/to/chain_a.a3m
   - protein:
       id: B
       sequence: CHAIN_B_SEQUENCE
