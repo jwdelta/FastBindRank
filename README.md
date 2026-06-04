@@ -148,7 +148,7 @@ bin/fastbindrank affinity predict-chunk \
 
 The protein YAML template lets you support a single chain, a homodimer such as `id: [A, B]`, or multiple separately defined chains. The template should already contain the full protein definition(s), plus a ligand entry whose SMILES value is `__LIGAND_SMILES__`.
 
-By default, `affinity predict-chunk` runs Boltz-2 with `--use_msa_server`, so Boltz-2 generates MSA data automatically. If you already have a precomputed MSA, pass `--msa-path /path/to/msa.a3m`; FastBindRank will replace `__MSA_PATH__` in the YAML template and will not pass `--use_msa_server`.
+By default, `affinity predict-chunk` runs Boltz-2 with `--use_msa_server`, so Boltz-2 generates MSA data automatically. If you already have a precomputed MSA, pass `--msa-path /path/to/msa.a3m`; FastBindRank will replace `__MSA_PATH__` in the YAML template and will not pass `--use_msa_server`[recommended].
 
 Example templates are provided in:
 
