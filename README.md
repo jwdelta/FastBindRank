@@ -103,14 +103,15 @@ Important behavior:
 - `iteration_1` samples the training split, tuning split, and test split
 - `iteration > 1` samples only the training split
 - `iteration > 1` reuses the tuning split and test split from `iteration_1`
-- already-used compounds and compounds listed in `--exclude-ids-file` are excluded from future sampling
+- compounds already recorded in `<results-dir>/used_compound_ids.tsv` are automatically excluded from future sampling
+- compounds listed in `--exclude-ids-file` are also excluded when you need an additional external blacklist
 
 Key parameters for `iterations prepare`:
 
 | Parameter | Meaning |
 | --- | --- |
 | `--iteration` | Iteration index to prepare, such as `1`, `2`, or `3`. |
-| `--exclude-ids-file` | Optional file listing compound IDs that must never be sampled. |
+| `--exclude-ids-file` | Optional extra blacklist of compound IDs that must never be sampled. |
 | `--training-split` | Number of compounds to sample into the training split. Default: `250000`. |
 | `--tuning-split` | Number of compounds to sample into the tuning split for `iteration_1`. Default: `100000`. |
 | `--test-split` | Number of compounds to sample into the test split for `iteration_1`. Default: `250000`. |
