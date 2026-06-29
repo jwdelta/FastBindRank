@@ -445,7 +445,3 @@ For commercial use, licensing, or partnership inquiries, please contact Yale Ven
 **Alexander Turo**  
 Yale Ventures  
 alexander.turo@yale.edu
-
-## License
-
-This project is licensed under the terms of the MIT license.
