@@ -436,6 +436,16 @@ If you use FastBindRank in your research, please cite this work. Citation detail
 
 We welcome any bug reports, enhancement requests, and other contributions. To submit a bug report or enhancement request, please use the GitHub issues tracker.
 
+## Academic and Commercial Use
+
+FastBindRank is freely available for academic research.
+
+For commercial use, licensing, or partnership inquiries, please contact Yale Ventures:
+
+**Alexander Turo**  
+Yale Ventures  
+alexander.turo@yale.edu
+
 ## License
 
 This project is licensed under the terms of the MIT license.
