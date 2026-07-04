@@ -174,7 +174,12 @@ EOF
     fi
 
     echo "[affinity predict-chunk] ${split_name} ${start_line}-${end_line}: ${chunk_index}/${chunk_total} CID=${compound_id}" >&2
-    "${boltz_cmd[@]}" >&2
+    if ! "${boltz_cmd[@]}" >&2; then
+      printf "%s\t\t\t\t\t\t\t5\n" "$compound_id"
+      echo "[affinity predict-chunk] ${split_name} ${start_line}-${end_line}: ${chunk_index}/${chunk_total} CID=${compound_id} failed; writing empty row and continuing" >&2
+      rm -rf "$compound_tmp_dir"
+      continue
+    fi
 
     confidence_file="$compound_output_dir/boltz_results_${protein_name}_${compound_id}/predictions/${protein_name}_${compound_id}/confidence_${protein_name}_${compound_id}_model_0.json"
     affinity_file="$compound_output_dir/boltz_results_${protein_name}_${compound_id}/predictions/${protein_name}_${compound_id}/affinity_${protein_name}_${compound_id}.json"
@@ -219,3 +224,4 @@ EOF
 rm -rf "$chunk_dir"
 
 echo "Chunk prediction written to: $chunk_output"
+
