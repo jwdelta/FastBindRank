@@ -430,7 +430,12 @@ The `top-hits cluster` step writes its outputs under:
 
 ## Citing This Work
 
-If you use FastBindRank in your research, please cite this work. Citation details will be added here.
+If you use FastBindRank in your research, please cite:
+
+> Jiawei Dai, Yueyue Wang, Naing Lin Shan, Marco Mariani, Zimeng Yu, Qin Yan, Lalit K. Golani, Yulia V. Surovtseva, William H. Lee, Lajos Pusztai.
+> **Distillation enables scalable high-fidelity virtual screening across ultra-large chemical libraries.**
+> *bioRxiv*. 2026.06.29.735361.
+> https://doi.org/10.64898/2026.06.29.735361
 
 ## Contributing
 
