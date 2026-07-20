@@ -13,6 +13,8 @@ Usage:
                                 [--batch-size N]
                                 [--train-workers N]
                                 [--early-stop-patience N]
+                                [--grid-shard-index N]
+                                [--grid-shard-count N]
 
 Description:
   Train one iteration after affinity prediction files are ready.
@@ -28,6 +30,8 @@ Important behavior:
   - the training split always comes from the requested iteration
   - tuning and test always come from iteration 1
   - if iteration > 1 and a previous checkpoint exists, training finetunes from it
+  - --grid-shard-index and --grid-shard-count split the hyperparameter grid
+    across multiple jobs; by default, one job runs the full grid
 
 Default results location:
   If --results-dir is not given, the default is:
@@ -45,6 +49,8 @@ epochs="1000"
 batch_size="512"
 train_workers="1"
 early_stop_patience="3"
+grid_shard_index="0"
+grid_shard_count="1"
 
 # Full predefined search space for FastBindRank model training.
 hard_label="false"
@@ -65,6 +71,8 @@ while [[ $# -gt 0 ]]; do
     --batch-size) batch_size="$2"; shift 2 ;;
     --train-workers) train_workers="$2"; shift 2 ;;
     --early-stop-patience) early_stop_patience="$2"; shift 2 ;;
+    --grid-shard-index) grid_shard_index="$2"; shift 2 ;;
+    --grid-shard-count) grid_shard_count="$2"; shift 2 ;;
     --help|-h)
       usage
       exit 0
@@ -81,6 +89,21 @@ if [[ -z "$workspace" || -z "$iteration" ]]; then
   usage >&2
   exit 1
 fi
+
+if ! [[ "$grid_shard_index" =~ ^[0-9]+$ && "$grid_shard_count" =~ ^[0-9]+$ ]]; then
+  echo "Error: --grid-shard-index and --grid-shard-count must be non-negative integers." >&2
+  exit 1
+fi
+if [[ "$grid_shard_count" -lt 1 ]]; then
+  echo "Error: --grid-shard-count must be at least 1." >&2
+  exit 1
+fi
+if [[ "$grid_shard_index" -ge "$grid_shard_count" ]]; then
+  echo "Error: --grid-shard-index must be smaller than --grid-shard-count." >&2
+  exit 1
+fi
+grid_shard_index=$((10#$grid_shard_index))
+grid_shard_count=$((10#$grid_shard_count))
 
 project_dir="${results_dir:-$workspace/results}"
 iteration_dir="$project_dir/iteration_${iteration}"
@@ -105,6 +128,13 @@ done
 
 mkdir -p "$model_dir"
 
+should_run_config() {
+  local config_index="$1"
+  (( config_index % grid_shard_count == grid_shard_index ))
+}
+
+config_index=0
+
 # Run the full search space. Each configuration writes to its own output directory
 # so the results remain separated and iteration-to-iteration finetuning can reuse
 # the matching checkpoint from the previous iteration when available.
@@ -115,6 +145,12 @@ for hidden_dims in "${hidden_list[@]}"; do
         adam)
           for learning_rate in "${lrs[@]}"; do
             run_output_dir="$model_dir/output_soft_labels/hidims${hidden_dims}_dropout${dropout}_${optimizer}_lr${learning_rate}"
+            current_config_index="$config_index"
+            config_index=$((config_index + 1))
+            if ! should_run_config "$current_config_index"; then
+              continue
+            fi
+            echo "[iterations train] running config ${current_config_index}: hidden=${hidden_dims} dropout=${dropout} optimizer=${optimizer} lr=${learning_rate}" >&2
             train_cmd=(
               "$python_bin" "$train_helper"
               --train_fp "$train_fp"
@@ -190,6 +226,12 @@ for hidden_dims in "${hidden_list[@]}"; do
           for learning_rate in "${lrs[@]}"; do
             for weight_decay in "${wds[@]}"; do
               run_output_dir="$model_dir/output_soft_labels/hidims${hidden_dims}_dropout${dropout}_${optimizer}_lr${learning_rate}_weight_decay${weight_decay}"
+              current_config_index="$config_index"
+              config_index=$((config_index + 1))
+              if ! should_run_config "$current_config_index"; then
+                continue
+              fi
+              echo "[iterations train] running config ${current_config_index}: hidden=${hidden_dims} dropout=${dropout} optimizer=${optimizer} lr=${learning_rate} weight_decay=${weight_decay}" >&2
               train_cmd=(
                 "$python_bin" "$train_helper"
                 --train_fp "$train_fp"
@@ -269,6 +311,12 @@ for hidden_dims in "${hidden_list[@]}"; do
             for weight_decay in "${wds[@]}"; do
               for momentum in "${momentums[@]}"; do
                 run_output_dir="$model_dir/output_soft_labels/hidims${hidden_dims}_dropout${dropout}_${optimizer}_lr${learning_rate}_weight_decay${weight_decay}_momentum${momentum}"
+                current_config_index="$config_index"
+                config_index=$((config_index + 1))
+                if ! should_run_config "$current_config_index"; then
+                  continue
+                fi
+                echo "[iterations train] running config ${current_config_index}: hidden=${hidden_dims} dropout=${dropout} optimizer=${optimizer} lr=${learning_rate} weight_decay=${weight_decay} momentum=${momentum}" >&2
                 train_cmd=(
                   "$python_bin" "$train_helper"
                   --train_fp "$train_fp"
