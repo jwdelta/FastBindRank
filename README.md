@@ -226,10 +226,10 @@ bin/fastbindrank iterations train \
 Training behavior:
 
 - runs the full predefined hyperparameter search space automatically
-- keeps `hard_label=false`
 - uses the requested iteration for the training split
 - uses `iteration_1` for the tuning split and test split
 - finetunes from the previous iteration checkpoint when a matching configuration exists
+- optionally splits the hyperparameter grid across multiple jobs using `--grid-shard-index` and `--grid-shard-count`
 
 Key parameters for `iterations train`:
 
@@ -240,6 +240,8 @@ Key parameters for `iterations train`:
 | `--batch-size` | Batch size used during model training. Default: `512`. |
 | `--train-workers` | PyTorch data loader worker count. Default: `1`. |
 | `--early-stop-patience` | Number of unimproved epochs before early stopping. Default: `3`. |
+| `--grid-shard-index` | Zero-based shard index used to run one subset of the hyperparameter grid. Default: `0`. |
+| `--grid-shard-count` | Total number of shards used to split the hyperparameter grid. Default: `1`. |
 
 ### 3. Summarize model runs and select the best model
 
