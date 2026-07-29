@@ -319,7 +319,7 @@ bin/fastbindrank top-hits rescore-chunk \
   --end-line 200
 ```
 
-This chunked rescoring step uses the selected top-hits table and is intended for job-array style execution, just like the earlier affinity prediction step.
+This chunked rescoring step uses the selected top-hits table and is intended for job-array style execution, just like the earlier affinity prediction step. It also supports `--msa-path`; when provided, the YAML template must contain `__MSA_PATH__`, and Boltz-2 is run without `--use_msa_server`.
 
 Merge, annotate, filter, and cluster:
 
