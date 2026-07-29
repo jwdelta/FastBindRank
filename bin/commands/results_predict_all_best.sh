@@ -70,6 +70,7 @@ fi
 
 train_helper="$bin_dir/helpers/train_dnn_morgan.py"
 model_run_dir="$selection_dir/model_artifacts"
+model_summary="$selection_dir/best_model_summary.tsv"
 library_morgan_dir="$workspace/library/morgan_fingerprints"
 prediction_root="$selection_dir/library_predictions"
 prediction_chunks_dir="$prediction_root/chunks"
@@ -81,12 +82,24 @@ train_labels="$selection_dir/model_inputs/training_split_affinity.tsv"
 val_fp="$selection_dir/model_inputs/tuning_split_morgan.csv"
 val_labels="$selection_dir/model_inputs/tuning_split_affinity.tsv"
 
-for required_path in "$train_helper" "$model_run_dir" "$library_morgan_dir" "$train_fp" "$train_labels" "$val_fp" "$val_labels"; do
+for required_path in "$train_helper" "$model_run_dir" "$model_summary" "$library_morgan_dir" "$train_fp" "$train_labels" "$val_fp" "$val_labels"; do
   if [[ ! -e "$required_path" ]]; then
     echo "Error: required path not found: $required_path" >&2
     exit 1
   fi
 done
+
+summary_value() {
+  awk -F '\t' -v key="$1" '$1 == key {print $2; exit}' "$model_summary"
+}
+
+hidden_dims="$(summary_value hidden_dims)"
+dropout="$(summary_value dropout)"
+
+if [[ -z "$hidden_dims" || -z "$dropout" ]]; then
+  echo "Error: hidden_dims or dropout is missing from $model_summary" >&2
+  exit 1
+fi
 
 rm -rf "$prediction_root"
 mkdir -p "$prediction_chunks_dir"
@@ -102,6 +115,8 @@ find "$library_morgan_dir" -maxdepth 1 -type f | sort -V | while read -r chunk_f
     --val_labels "$val_labels" \
     --test_fp "$chunk_file" \
     --output_dir "$model_run_dir" \
+    --hidden_dims "$hidden_dims" \
+    --dropout "$dropout" \
     --mode test \
     --test_out_prefix "$chunk_prefix" \
     --save_probabilities
