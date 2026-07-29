@@ -15,12 +15,16 @@ Usage:
                                       [--boltz PATH]
                                       [--boltz-threads N]
                                       [--accelerator NAME]
+                                      [--msa-path PATH]
 
 Description:
   Run Boltz-2 rescoring for one chunk of selected top-hits.
   The YAML template should already contain the protein definition(s),
   ligand block, and affinity property block. Use __LIGAND_SMILES__ as the
   placeholder that will be replaced for each compound.
+  By default, Boltz-2 is run with --use_msa_server. If --msa-path is given,
+  the template must contain __MSA_PATH__, that placeholder is replaced with
+  the provided path, and --use_msa_server is not passed to Boltz-2.
 EOF
 }
 
@@ -34,6 +38,7 @@ selection_dir=""
 boltz_bin="boltz"
 boltz_threads="1"
 accelerator="gpu"
+msa_path=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -47,6 +52,7 @@ while [[ $# -gt 0 ]]; do
     --boltz) boltz_bin="$2"; shift 2 ;;
     --boltz-threads) boltz_threads="$2"; shift 2 ;;
     --accelerator) accelerator="$2"; shift 2 ;;
+    --msa-path) msa_path="$2"; shift 2 ;;
     --help|-h) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage >&2; exit 1 ;;
   esac
@@ -73,6 +79,14 @@ if [[ ! -f "$protein_yaml_template" ]]; then
   exit 1
 fi
 
+if [[ -n "$msa_path" && ! -f "$msa_path" ]]; then
+  echo "Error: MSA file not found: $msa_path" >&2
+  exit 1
+fi
+if [[ -n "$msa_path" ]]; then
+  msa_path="$(cd "$(dirname "$msa_path")" && pwd)/$(basename "$msa_path")"
+fi
+
 mkdir -p "$chunk_dir"
 
 chunk_total=$(( end_line - start_line + 1 ))
@@ -91,7 +105,7 @@ chunk_total=$(( end_line - start_line + 1 ))
     mkdir -p "$compound_input_dir" "$compound_output_dir"
 
     yaml_file="$compound_input_dir/${protein_name}_${compound_id}.yaml"
-    python3 - "$protein_yaml_template" "$yaml_file" "$smiles" "$compound_id" <<'EOF'
+    python3 - "$protein_yaml_template" "$yaml_file" "$smiles" "$compound_id" "$msa_path" <<'EOF'
 from pathlib import Path
 import sys
 
@@ -99,19 +113,36 @@ template_path = Path(sys.argv[1])
 output_path = Path(sys.argv[2])
 smiles = sys.argv[3]
 compound_id = sys.argv[4]
+msa_path = sys.argv[5]
 
 template = template_path.read_text()
 if "__LIGAND_SMILES__" not in template:
     raise SystemExit("Protein YAML template must contain __LIGAND_SMILES__.")
+if msa_path and "__MSA_PATH__" not in template:
+    raise SystemExit("Protein YAML template must contain __MSA_PATH__ when --msa-path is given.")
+if not msa_path and "__MSA_PATH__" in template:
+    raise SystemExit("Protein YAML template contains __MSA_PATH__, but --msa-path was not given.")
 
 escaped_smiles = smiles.replace("'", "''")
 rendered = template.replace("__LIGAND_SMILES__", escaped_smiles)
 rendered = rendered.replace("__LIGAND_ID__", compound_id)
+if msa_path:
+    escaped_msa_path = msa_path.replace("'", "''")
+    rendered = rendered.replace("__MSA_PATH__", escaped_msa_path)
 output_path.write_text(rendered if rendered.endswith("\n") else rendered + "\n")
 EOF
 
     echo "[top-hits rescore-chunk] ${start_line}-${end_line}: ${chunk_index}/${chunk_total} CID=${compound_id}" >&2
-    "$boltz_bin" predict "$yaml_file" --use_msa_server --accelerator "$accelerator" --out_dir "$compound_output_dir" --preprocessing-threads "$boltz_threads" >&2
+    boltz_cmd=(
+      "$boltz_bin" predict "$yaml_file"
+      --accelerator "$accelerator"
+      --out_dir "$compound_output_dir"
+      --preprocessing-threads "$boltz_threads"
+    )
+    if [[ -z "$msa_path" ]]; then
+      boltz_cmd+=(--use_msa_server)
+    fi
+    "${boltz_cmd[@]}" >&2
 
     confidence_file="$compound_output_dir/boltz_results_${protein_name}_${compound_id}/predictions/${protein_name}_${compound_id}/confidence_${protein_name}_${compound_id}_model_0.json"
     affinity_file="$compound_output_dir/boltz_results_${protein_name}_${compound_id}/predictions/${protein_name}_${compound_id}/affinity_${protein_name}_${compound_id}.json"
