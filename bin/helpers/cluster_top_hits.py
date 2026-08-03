@@ -39,6 +39,15 @@ def plot_pca(X, df_plot, out_pdf, fingerprint_name, title_suffix=""):
     plt.close()
 
 
+def write_pca_placeholder(out_pdf, message: str) -> None:
+    plt.figure(figsize=(6, 5))
+    plt.axis("off")
+    plt.text(0.5, 0.5, message, ha="center", va="center", wrap=True)
+    plt.tight_layout()
+    plt.savefig(out_pdf)
+    plt.close()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input-file", required=True)
@@ -91,6 +100,7 @@ def main() -> None:
         Path(args.output_file).parent.mkdir(parents=True, exist_ok=True)
         df.to_csv(args.output_file, index=False)
         Path(args.summary_log).write_text("No valid molecules for clustering.\n")
+        write_pca_placeholder(args.pca_figure, "No valid molecules for PCA.")
         return
 
     dists = []
@@ -123,6 +133,13 @@ def main() -> None:
 
     X = np.vstack(X_rows)
     df_plot = df.loc[row_idx].copy()
+    if X.shape[0] < 2:
+        write_pca_placeholder(
+            args.pca_figure,
+            f"PCA requires at least 2 molecules.\nValid molecules: {X.shape[0]}.",
+        )
+        return
+
     plot_pca(
         X,
         df_plot,
