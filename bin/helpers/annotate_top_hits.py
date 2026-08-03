@@ -62,7 +62,7 @@ def main() -> None:
     args = parser.parse_args()
 
     top_hits = pd.read_csv(args.top_hits_table)
-    boltz = pd.read_csv(args.boltz_table, sep=r"\s+|\t", engine="python")
+    boltz = pd.read_csv(args.boltz_table, sep="\t")
     boltz = boltz.rename(
         columns={
             "affinity_pred_log10_IC50": "Boltz2_pred_log10IC50",
