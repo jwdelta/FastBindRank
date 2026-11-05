@@ -79,6 +79,7 @@ class MorganSparseDataset(Dataset):
                 parts = line.split(',')
                 if len(parts) < 1: continue
                 ligand_id = parts[0]
+                idxs = []  # An ID-only row represents an all-zero fingerprint.
                 if len(parts) > 1:
                     try:
                         idxs = [int(x) for x in parts[1:]]
