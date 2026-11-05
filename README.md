@@ -267,6 +267,29 @@ Key parameters:
 | --- | --- |
 | `--results-dir` | Result directory to scan for all iteration model outputs. |
 
+#### Optional: Evaluate a saved model on an external test set
+
+Use an existing checkpoint directly, without a workspace, training inputs or tuning inputs:
+
+```bash
+bin/fastbindrank results test-model \
+  --checkpoint /path/to/ckpts/best_model.pt \
+  --test-fp /path/to/external_test_morgan.csv \
+  --test-labels /path/to/external_test_affinity.tsv \
+  --output-dir /path/to/external_test_results
+```
+
+The command restores the model from the checkpoint and evaluates the external set without retraining.
+
+Optional arguments:
+
+| Argument | Default | Purpose |
+| --- | --- | --- |
+| `--device` | `cuda` when CUDA is available; otherwise `cpu` | Select the inference device. Use `--device cpu` to request CPU explicitly. |
+| `--batch-size` | `512` | Number of molecules per prediction batch. Reduce it to lower memory use. |
+| `--id-col` | Checkpoint value, normally `CID` | Column in `--test-labels` containing compound IDs. IDs must match those in `--test-fp`; use this option only if your label file uses a different column name. |
+| `--label-col` | Checkpoint value, normally `affinity_probability_binary` | Column in `--test-labels` containing reference binding probabilities (0–1), used to calculate evaluation metrics. Use this option only if your label file uses a different column name. |
+
 ### 4. Predict the full library with the selected best model
 
 ```bash
