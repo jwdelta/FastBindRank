@@ -14,6 +14,7 @@ Commands:
   iterations prepare         Prepare one iteration's splits and extracted features
   iterations train           Train one iteration after affinity prediction is ready
   results summarize-models   Summarize model runs and locate the best last-iteration model
+  results test-model         Evaluate a saved checkpoint on an external test set
   results predict-all-best   Predict all library compounds with the selected best model
   top-hits select            Select top-ranked compounds from full-library predictions
   top-hits rescore-chunk     Run one chunk of Boltz-2 rescoring for selected top hits
@@ -100,7 +101,7 @@ case "$command" in
     ;;
   results)
     if [[ $# -lt 1 ]]; then
-      echo "Available results subcommands: summarize-models" >&2
+      echo "Available results subcommands: summarize-models, test-model" >&2
       exit 1
     fi
     subcommand="$1"
@@ -109,11 +110,14 @@ case "$command" in
       summarize-models)
         exec "$script_dir/commands/results_summarize_models.sh" "$@"
         ;;
+      test-model)
+        exec "$script_dir/commands/results_test_model.sh" "$@"
+        ;;
       predict-all-best)
         exec "$script_dir/commands/results_predict_all_best.sh" "$@"
         ;;
       --help|-h|help)
-        echo "Available results subcommands: summarize-models, predict-all-best"
+        echo "Available results subcommands: summarize-models, test-model, predict-all-best"
         ;;
       *)
         echo "Unknown results subcommand: $subcommand" >&2
