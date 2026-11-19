@@ -2,6 +2,9 @@
 
 set -euo pipefail
 
+original_args=("$@")
+lock_fd=""
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -22,6 +25,7 @@ Description:
   3. decompressing CID-SMILES.gz into CID-SMILES
   4. creating library/smiles.txt and splitting it into library/smiles_chunks/
   5. generating Morgan fingerprints into library/morgan_fingerprints/
+  6. building/reusing library/molecule_index.sqlite for canonical deduplication and scaffold sampling
 
 Parameters:
   --workspace PATH         Output workspace. Default: current directory
@@ -50,6 +54,7 @@ cleanup_downloads="false"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --lock-fd) lock_fd="$2"; shift 2 ;;
     --workspace)
       workspace="$2"
       shift 2
@@ -98,13 +103,32 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if ! command -v wget >/dev/null 2>&1; then
+if [[ "$skip_download" == "false" ]] && ! command -v wget >/dev/null 2>&1; then
   echo "Error: wget is required but was not found in PATH." >&2
   exit 1
 fi
 
 if [[ ! -f "$fingerprint_script" ]]; then
   echo "Error: fingerprint helper not found: $fingerprint_script" >&2
+  exit 1
+fi
+
+# Hold one lock through sampling/library generation and final verification.
+if [[ -z "$lock_fd" ]]; then
+  exec "$python_bin" "$bin_dir/helpers/locked_command.py" \
+    --lock-file "$workspace/.library_prepare.lock" -- bash "$script_dir/library_prepare_pubchem.sh" "${original_args[@]}"
+fi
+"$python_bin" - "$bin_dir/helpers" "$lock_fd" "$workspace/.library_prepare.lock" <<'PYLOCK'
+import sys
+sys.path.insert(0, sys.argv[1])
+from locked_command import check_lock
+check_lock(int(sys.argv[2]), sys.argv[3])
+PYLOCK
+
+# An indexed library is immutable: reject rebuilding before touching any assets.
+if [[ -f "$workspace/library/molecule_index.sqlite" ]] && \
+   [[ "$skip_download" != "true" || "$skip_split" != "true" || "$skip_fingerprints" != "true" ]]; then
+  echo "Error: indexed library already exists. To verify/reuse it, pass --skip-download --skip-split --skip-fingerprints. To rebuild, use a new workspace." >&2
   exit 1
 fi
 
@@ -154,14 +178,14 @@ else
   echo "Skipping download step."
 fi
 
-if [[ ! -f "$decompressed_file" ]]; then
+if [[ "$skip_split" == "false" ]] && { [[ "$skip_download" == "false" ]] || [[ ! -f "$decompressed_file" ]]; }; then
   if [[ ! -f "$compressed_file" ]]; then
     echo "Error: missing $compressed_file. Remove --skip-download or provide the file." >&2
     exit 1
   fi
   echo "Decompressing CID-SMILES.gz ..."
   gzip -dc "$compressed_file" > "$decompressed_file"
-else
+elif [[ "$skip_split" == "false" ]]; then
   echo "Reusing existing decompressed file: $decompressed_file"
 fi
 
@@ -172,7 +196,26 @@ if [[ "$skip_split" == "false" ]]; then
   echo "Splitting smiles.txt into library/smiles_chunks/ ..."
   rm -rf "$smiles_chunks_dir"
   mkdir -p "$smiles_chunks_dir"
-  split -d -a 3 -l "$chunk_lines" "$smiles_table" "$smiles_chunks_dir/smile_all_" --additional-suffix=.txt
+  "$python_bin" - "$smiles_table" "$smiles_chunks_dir" "$chunk_lines" <<'PYCODE'
+import sys
+from pathlib import Path
+source, directory, chunk_lines = sys.argv[1:]
+chunk_lines = int(chunk_lines)
+if chunk_lines < 1:
+    raise ValueError('--chunk-lines must be positive')
+output = None
+try:
+    with open(source) as handle:
+        for n, line in enumerate(handle):
+            if n % chunk_lines == 0:
+                if output is not None:
+                    output.close()
+                output = (Path(directory) / f'smile_all_{n // chunk_lines:03d}.txt').open('w')
+            output.write(line)
+finally:
+    if output is not None:
+        output.close()
+PYCODE
 else
   echo "Skipping split step."
   if [[ ! -f "$smiles_table" || ! -d "$smiles_chunks_dir" ]]; then
@@ -193,6 +236,10 @@ else
   echo "Skipping Morgan fingerprint generation."
 fi
 
+"$python_bin" "$bin_dir/helpers/build_molecule_index.py" \
+  --smiles-file "$smiles_table" --morgan-directory "$morgan_dir" \
+  --output "$library_dir/molecule_index.sqlite" --workers "$workers"
+
 if [[ "$cleanup_downloads" == "true" ]]; then
   echo "Removing PubChem download directory: $download_dir"
   rm -rf "$download_dir"
@@ -206,3 +253,4 @@ fi
 echo "SMILES table:      $smiles_table"
 echo "SMILES chunks:     $smiles_chunks_dir"
 echo "Morgan library:    $morgan_dir"
+echo "Molecule index:    $library_dir/molecule_index.sqlite"
