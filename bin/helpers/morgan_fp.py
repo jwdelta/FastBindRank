@@ -1,64 +1,52 @@
-import argparse
-import glob
-import multiprocessing
-import os
-import time
-from contextlib import closing
-from multiprocessing import Pool
+#!/usr/bin/env python3
 
-import numpy as np
-from rdkit import Chem, DataStructs
+import argparse
+from multiprocessing import Pool, cpu_count
+from pathlib import Path
+import time
+
+from rdkit import Chem
 from rdkit.Chem import rdFingerprintGenerator
 
-
-parser = argparse.ArgumentParser()
-parser.add_argument("-sfp", "--smile_folder_path", help="folder containing split smiles files", required=True)
-parser.add_argument("-fn", "--folder_name", help="output folder for Morgan fingerprints", required=True)
-parser.add_argument("-tp", "--tot_process", help="number of worker processes", required=True)
-
-io_args = parser.parse_args()
-sfp = io_args.smile_folder_path
-fn = io_args.folder_name
-t_pos = int(io_args.tot_process)
-
-MORGAN_GENERATOR = rdFingerprintGenerator.GetMorganGenerator(
-    radius=2,
-    fpSize=1024,
-    includeChirality=True,
-)
+GENERATOR = rdFingerprintGenerator.GetMorganGenerator(radius=2, fpSize=1024, includeChirality=True)
 
 
-def morgan_fingp(fname):
-    input_name = os.path.basename(fname)
-    stem = os.path.splitext(input_name)[0]
-    if stem.startswith("smile_all_"):
-        chunk_id = stem.replace("smile_all_", "", 1)
-        output_name = f"morgan_chunk_{chunk_id}.csv"
-    else:
-        output_name = f"{stem}.csv"
-    output_path = os.path.join(fn, output_name)
-    with open(output_path, "a") as ref_out:
-        with open(fname, "r") as ref_in:
-            for line in ref_in:
-                smile, compound_id = line.rstrip().split()
-                arr = np.zeros((1024,), dtype=np.int8)
-                try:
-                    mol = Chem.MolFromSmiles(smile)
-                    if mol is None:
-                        continue
-                    fp = MORGAN_GENERATOR.GetFingerprint(mol)
-                    DataStructs.ConvertToNumpyArray(fp, arr)
-                    ref_out.write(",".join([compound_id] + [str(elem) for elem in np.where(arr == 1)[0]]))
-                    ref_out.write("\n")
-                except Exception:
-                    print(line)
+def fingerprint_chunk(task):
+    """Write one chunk of original-molecule fingerprints; invalid structures are skipped."""
+    source, directory = task
+    source = Path(source)
+    stem = source.stem
+    name = f'morgan_chunk_{stem[len("smile_all_"):]}.csv' if stem.startswith('smile_all_') else f'{stem}.csv'
+    with (Path(directory) / name).open('w') as out, source.open() as handle:
+        for n, line in enumerate(handle, 1):
+            fields = line.split()
+            if len(fields) != 2:
+                raise ValueError(f'Malformed SMILES record in {source}:{n}')
+            smiles, cid = fields
+            molecule = Chem.MolFromSmiles(smiles)
+            if molecule is None:
+                continue
+            bits = GENERATOR.GetFingerprint(molecule).GetOnBits()
+            out.write(','.join([cid] + [str(bit) for bit in bits]) + '\n')
 
 
-files = list(glob.glob(os.path.join(sfp, "*.txt")))
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument('-sfp','--smile_folder_path', required=True)
+    p.add_argument('-fn','--folder_name', required=True)
+    p.add_argument('-tp','--tot_process', type=int, required=True)
+    a = p.parse_args()
+    if a.tot_process < 1:
+        p.error('--tot_process must be positive')
+    files = sorted(Path(a.smile_folder_path).glob('*.txt'))
+    if not files:
+        raise ValueError('No SMILES chunks found')
+    Path(a.folder_name).mkdir(parents=True, exist_ok=True)
+    start = time.time()
+    with Pool(min(a.tot_process, cpu_count(), len(files))) as pool:
+        pool.map(fingerprint_chunk, [(str(f),a.folder_name) for f in files])
+    print(f'Fingerprint generation completed in {time.time()-start:.2f} seconds')
 
-os.makedirs(fn, exist_ok=True)
 
-start_time = time.time()
-with closing(Pool(min(multiprocessing.cpu_count(), t_pos))) as pool:
-    pool.map(morgan_fingp, files)
-print(time.time() - start_time)
+if __name__ == '__main__':
+    main()
