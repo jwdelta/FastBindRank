@@ -29,7 +29,7 @@ Required affinity files:
 Important behavior:
   - the training split always comes from the requested iteration
   - tuning and test always come from iteration 1
-  - if iteration > 1 and a previous checkpoint exists, training finetunes from it
+  - iteration > 1 requires the matching previous checkpoint; missing checkpoints stop training
   - --grid-shard-index and --grid-shard-count split the hyperparameter grid
     across multiple jobs; by default, one job runs the full grid
 
@@ -137,7 +137,7 @@ config_index=0
 
 # Run the full search space. Each configuration writes to its own output directory
 # so the results remain separated and iteration-to-iteration finetuning can reuse
-# the matching checkpoint from the previous iteration when available.
+# the matching checkpoint from the previous iteration.
 for hidden_dims in "${hidden_list[@]}"; do
   for dropout in "${dropouts[@]}"; do
     for optimizer in "${optimizers[@]}"; do
@@ -174,9 +174,11 @@ for hidden_dims in "${hidden_list[@]}"; do
 
             if [[ "$iteration" -gt 1 ]]; then
               previous_ckpt="$project_dir/iteration_$((iteration - 1))/model/output_soft_labels/hidims${hidden_dims}_dropout${dropout}_${optimizer}_lr${learning_rate}/ckpts/best_model.pt"
-              if [[ -f "$previous_ckpt" ]]; then
-                train_cmd+=(--finetune_from "$previous_ckpt")
+              if [[ ! -s "$previous_ckpt" ]]; then
+                echo "Error: required previous checkpoint missing or empty: $previous_ckpt" >&2
+                exit 1
               fi
+              train_cmd+=(--finetune_from "$previous_ckpt")
             fi
 
             "${train_cmd[@]}"
@@ -256,9 +258,11 @@ for hidden_dims in "${hidden_list[@]}"; do
 
               if [[ "$iteration" -gt 1 ]]; then
                 previous_ckpt="$project_dir/iteration_$((iteration - 1))/model/output_soft_labels/hidims${hidden_dims}_dropout${dropout}_${optimizer}_lr${learning_rate}_weight_decay${weight_decay}/ckpts/best_model.pt"
-                if [[ -f "$previous_ckpt" ]]; then
-                  train_cmd+=(--finetune_from "$previous_ckpt")
+                if [[ ! -s "$previous_ckpt" ]]; then
+                  echo "Error: required previous checkpoint missing or empty: $previous_ckpt" >&2
+                  exit 1
                 fi
+                train_cmd+=(--finetune_from "$previous_ckpt")
               fi
 
               "${train_cmd[@]}"
@@ -342,9 +346,11 @@ for hidden_dims in "${hidden_list[@]}"; do
 
                 if [[ "$iteration" -gt 1 ]]; then
                   previous_ckpt="$project_dir/iteration_$((iteration - 1))/model/output_soft_labels/hidims${hidden_dims}_dropout${dropout}_${optimizer}_lr${learning_rate}_weight_decay${weight_decay}_momentum${momentum}/ckpts/best_model.pt"
-                  if [[ -f "$previous_ckpt" ]]; then
-                    train_cmd+=(--finetune_from "$previous_ckpt")
+                  if [[ ! -s "$previous_ckpt" ]]; then
+                    echo "Error: required previous checkpoint missing or empty: $previous_ckpt" >&2
+                    exit 1
                   fi
+                  train_cmd+=(--finetune_from "$previous_ckpt")
                 fi
 
                 "${train_cmd[@]}"
