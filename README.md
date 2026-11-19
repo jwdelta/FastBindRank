@@ -1,6 +1,6 @@
 # FastBindRank
 
-FastBindRank is a command-line distillation workflow that uses affinity predictions from high-fidelity structure-based models to train a fast surrogate ranking model for compound library preparation, iteration-based sampling, model selection, full-library rescoring, and top-hit structural diversity analysis. Boltz-2 is currently used as the teacher model, given its near–free-energy perturbation (FEP) performance in protein–ligand binding affinity prediction. The framework is model-agnostic and can readily incorporate newer or more advanced teacher models as they become available.
+FastBindRank is a command-line distillation workflow that uses affinity predictions from high-fidelity structure-based models to train a fast surrogate ranking model for compound library preparation, iteration-based sampling, model selection, full-library rescoring, and top-hit structural diversity analysis. Sampling defaults to Bemis–Murcko scaffold-based sampling to evaluate predictive performance on compounds with scaffolds absent from training. Boltz-2 is currently used as the teacher model, given its near–free-energy perturbation (FEP) performance in protein–ligand binding affinity prediction. The framework is model-agnostic and can readily incorporate newer or more advanced teacher models as they become available.
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/f7b920ae-4a2a-4681-8b4e-4528c4d49081" alt="Workflow" style="width:700px;">
@@ -72,10 +72,13 @@ This creates:
 └── library/
     ├── smiles.txt
     ├── smiles_chunks/
-    └── morgan_fingerprints/
+    ├── morgan_fingerprints/
+    └── molecule_index.sqlite
 ```
 
-The Morgan fingerprint directory contains chunk files named like `morgan_chunk_000.csv`, `morgan_chunk_001.csv`, and so on.
+The Morgan fingerprint directory contains chunk files named like `morgan_chunk_000.csv`, `morgan_chunk_001.csv`, and so on. `molecule_index.sqlite` stores molecular identities, scaffolds, and sampling eligibility.
+
+To reuse an indexed library, pass `--skip-download --skip-split --skip-fingerprints`. Use a new workspace to prepare a different library.
 
 Key parameters:
 
@@ -85,7 +88,7 @@ Key parameters:
 | `--workers` | Number of worker processes used when generating Morgan fingerprints. Default: `8`. |
 | `--skip-download` | Reuse existing downloaded or decompressed PubChem files. |
 | `--skip-split` | Reuse existing `smiles.txt` and `smiles_chunks/`. |
-| `--skip-fingerprints` | Skip Morgan fingerprint generation. |
+| `--skip-fingerprints` | Reuse existing Morgan fingerprints. |
 | `--cleanup-downloads` | Remove the `pubchem/` download directory after the library has been generated successfully. |
 
 ### 2. Iteration Workflow
@@ -95,27 +98,38 @@ bin/fastbindrank iterations prepare \
   --workspace /path/to/workspace \
   --results-dir /path/to/results/project_x \
   --iteration 1 \
+  --training-split 100000 \
+  --tuning-split 50000 \
+  --test-split 100000 \
   --exclude-ids-file /path/to/excluded_ids.txt
 ```
 
 Important behavior:
 
+- Scaffold sampling selects one compound per scaffold, with no scaffolds shared across training, tuning, and test sets.
+- Random sampling allows scaffold overlap within and between training and tuning sets, but excludes all test scaffolds from both sets.
+- The default pool is the entire indexed eligible library. To restrict sampling to an existing eligible subset, pass `--sampling-pool /path/to/pool.smi`, containing `SMILES<TAB>ID`, without a header.
 - `iteration_1` samples the training split, tuning split, and test split
 - `iteration > 1` samples only the training split
 - `iteration > 1` reuses the tuning split and test split from `iteration_1`
-- compounds already recorded in `<results-dir>/used_compound_ids.tsv` are automatically excluded from future sampling
+- Previously selected compounds and identical canonical structures are excluded from subsequent training samples.
 - compounds listed in `--exclude-ids-file` are also excluded when you need an additional external blacklist
+
+Use the same `--seed` across iterations of an experiment; iteration-specific seeds are derived automatically. The base seed is recorded in `<results-dir>/sampling_manifest.json` and each iteration’s `splits/sampling_metadata.json`. Use different seeds and result directories for independent replicates.
 
 Key parameters for `iterations prepare`:
 
 | Parameter | Meaning |
 | --- | --- |
+| `--sampling-strategy` | `scaffold` (default) or `random`. |
+| `--sampling-pool` | Optional headerless SMILES/ID subset; otherwise the full indexed library. |
+| `--test-set` | Optional headerless SMILES/ID file containing one compound per scaffold. Use the same file across experiments for comparison. |
 | `--iteration` | Iteration index to prepare, such as `1`, `2`, or `3`. |
 | `--exclude-ids-file` | Optional extra blacklist of compound IDs that must never be sampled. |
-| `--training-split` | Number of compounds to sample into the training split. Default: `250000`. |
-| `--tuning-split` | Number of compounds to sample into the tuning split for `iteration_1`. Default: `100000`. |
-| `--test-split` | Number of compounds to sample into the test split for `iteration_1`. Default: `250000`. |
-| `--workers` | Number of worker processes used during sampling and extraction. Default: `10`. |
+| `--training-split` | Number of compounds to sample into the training split. Default: `100000`. |
+| `--tuning-split` | Number of compounds to sample into the tuning split for `iteration_1`. Default: `50000`. |
+| `--test-split` | Number of compounds to sample into the test split for `iteration_1`. Default: `100000`. |
+| `--workers` | Number of worker processes used for fingerprint extraction. Default: `10`. |
 | `--seed` | Random seed used for reproducible sampling. Default: `42`. |
 
 Example using automatic MSA generation:
@@ -216,6 +230,8 @@ bin/fastbindrank affinity merge-chunks \
   --split training_split
 ```
 
+In iteration 1, also predict and merge the tuning and test splits before training.
+
 ```bash
 bin/fastbindrank iterations train \
   --workspace /path/to/workspace \
@@ -228,7 +244,7 @@ Training behavior:
 - runs the full predefined hyperparameter search space automatically
 - uses the requested iteration for the training split
 - uses `iteration_1` for the tuning split and test split
-- finetunes from the previous iteration checkpoint when a matching configuration exists
+- from iteration 2 onward, requires the matching checkpoint from the previous iteration; missing or empty checkpoints stop training
 - optionally splits the hyperparameter grid across multiple jobs using `--grid-shard-index` and `--grid-shard-count`
 
 Key parameters for `iterations train`:
