@@ -2,12 +2,18 @@
 
 set -euo pipefail
 
+original_args=("$@")
+lock_fd=""
+
 usage() {
   cat <<'EOF'
 Usage:
   fastbindrank iterations prepare --workspace PATH
                                   --iteration N
                                   [--results-dir PATH]
+                                  [--sampling-strategy scaffold|random]
+                                  [--sampling-pool PATH]
+                                  [--test-set PATH]
                                   [--exclude-ids-file PATH]
                                   [--python PATH]
                                   [--workers N]
@@ -23,12 +29,18 @@ Description:
   3. extracting split-specific Morgan fingerprints
 
 Important behavior:
-  - iteration 1 samples training, tuning, and test splits
+  - default strategy: scaffold; defaults: train 100000, tuning 50000, test 100000
+  - iteration 1 samples train/tuning; imports --test-set or creates a frozen test
+  - pass the same --test-set to every experiment root for comparisons
+  - both strategies exclude all test scaffolds from training and tuning
+  - random allows scaffold overlap only between training and tuning/rounds
+  - repeat preparation reuses verified membership; changed configuration is rejected
   - iterations > 1 sample only the training split
   - iterations > 1 reuse tuning and test splits from iteration 1
 
 Requirements:
   The prepared library must already exist under:
+    <workspace>/library/molecule_index.sqlite
     <workspace>/library/smiles.txt
     <workspace>/library/smiles_chunks/
     <workspace>/library/morgan_fingerprints/
@@ -47,16 +59,23 @@ workspace=""
 iteration=""
 results_dir=""
 exclude_ids_file=""
+sampling_strategy="scaffold"
+sampling_pool=""
+test_set=""
 python_bin="python3"
 workers="10"
-training_split="250000"
-tuning_split="100000"
-test_split="250000"
+training_split="100000"
+tuning_split="50000"
+test_split="100000"
 seed="42"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --lock-fd) lock_fd="$2"; shift 2 ;;
     --workspace) workspace="$2"; shift 2 ;;
+    --sampling-strategy) sampling_strategy="$2"; shift 2 ;;
+    --sampling-pool) sampling_pool="$2"; shift 2 ;;
+    --test-set) test_set="$2"; shift 2 ;;
     --iteration) iteration="$2"; shift 2 ;;
     --results-dir) results_dir="$2"; shift 2 ;;
     --exclude-ids-file) exclude_ids_file="$2"; shift 2 ;;
@@ -83,6 +102,18 @@ if [[ -z "$workspace" || -z "$iteration" ]]; then
   exit 1
 fi
 
+# Hold one lock through sampling/library generation and final verification.
+if [[ -z "$lock_fd" ]]; then
+  exec "$python_bin" "$bin_dir/helpers/locked_command.py" \
+    --lock-file "${results_dir:-$workspace/results}/.sampling.lock" -- bash "$script_dir/iterations_prepare.sh" "${original_args[@]}"
+fi
+"$python_bin" - "$bin_dir/helpers" "$lock_fd" "${results_dir:-$workspace/results}/.sampling.lock" <<'PYLOCK'
+import sys
+sys.path.insert(0, sys.argv[1])
+from locked_command import check_lock
+check_lock(int(sys.argv[2]), sys.argv[3])
+PYLOCK
+
 library_dir="$workspace/library"
 smiles_table="$library_dir/smiles.txt"
 smiles_chunks_dir="$library_dir/smiles_chunks"
@@ -102,14 +133,15 @@ if [[ ! -f "$smiles_table" || ! -d "$smiles_chunks_dir" || ! -d "$morgan_library
 fi
 
 sample_helper="$bin_dir/helpers/sample_splits.py"
-extract_smiles_helper="$bin_dir/helpers/extract_split_smiles.py"
 extract_morgan_helper="$bin_dir/helpers/extract_split_morgan.py"
 
-mkdir -p "$split_dir" "$smile_dir" "$fingerprint_dir"
+mkdir -p "$iteration_dir" "$smile_dir" "$fingerprint_dir"
 
 sample_cmd=(
   "$python_bin" "$sample_helper"
-  --input-file "$smiles_table"
+  --lock-fd "$lock_fd"
+  --index "$library_dir/molecule_index.sqlite"
+  --sampling-strategy "$sampling_strategy"
   --output-dir "$split_dir"
   --results-dir "$project_dir"
   --training-size "$training_split"
@@ -117,8 +149,14 @@ sample_cmd=(
   --test-size "$test_split"
   --iteration "$iteration"
   --seed "$seed"
-  --workers "$workers"
 )
+
+if [[ -n "$sampling_pool" ]]; then
+  sample_cmd+=(--sampling-pool "$sampling_pool")
+fi
+if [[ -n "$test_set" ]]; then
+  sample_cmd+=(--test-set "$test_set")
+fi
 
 if [[ -n "$exclude_ids_file" ]]; then
   sample_cmd+=(--exclude-ids-file "$exclude_ids_file")
@@ -126,12 +164,12 @@ fi
 
 "${sample_cmd[@]}"
 
-"$python_bin" "$extract_smiles_helper" --smiles-library "$smiles_chunks_dir" --split-file "$split_dir/training_split.txt" --output-file "$smile_dir/training_split.smi" --workers "$workers"
+cp "$split_dir/training_split.txt" "$smile_dir/training_split.smi"
 "$python_bin" "$extract_morgan_helper" --morgan-library "$morgan_library_dir" --split-file "$split_dir/training_split.txt" --output-file "$fingerprint_dir/training_split_morgan.csv" --workers "$workers"
 
 if [[ "$iteration" == "1" ]]; then
-  "$python_bin" "$extract_smiles_helper" --smiles-library "$smiles_chunks_dir" --split-file "$split_dir/tuning_split.txt" --output-file "$smile_dir/tuning_split.smi" --workers "$workers"
-  "$python_bin" "$extract_smiles_helper" --smiles-library "$smiles_chunks_dir" --split-file "$split_dir/test_split.txt" --output-file "$smile_dir/test_split.smi" --workers "$workers"
+  cp "$split_dir/tuning_split.txt" "$smile_dir/tuning_split.smi"
+  cp "$split_dir/test_split.txt" "$smile_dir/test_split.smi"
 
   "$python_bin" "$extract_morgan_helper" --morgan-library "$morgan_library_dir" --split-file "$split_dir/tuning_split.txt" --output-file "$fingerprint_dir/tuning_split_morgan.csv" --workers "$workers"
   "$python_bin" "$extract_morgan_helper" --morgan-library "$morgan_library_dir" --split-file "$split_dir/test_split.txt" --output-file "$fingerprint_dir/test_split_morgan.csv" --workers "$workers"
@@ -153,6 +191,8 @@ else
   cp "$first_fingerprint_dir/tuning_split_morgan.csv" "$fingerprint_dir/tuning_split_morgan.csv"
   cp "$first_fingerprint_dir/test_split_morgan.csv" "$fingerprint_dir/test_split_morgan.csv"
 fi
+
+"$python_bin" "$bin_dir/helpers/validate_prepared_iteration.py" --iteration-dir "$iteration_dir"
 
 echo "Prepared iteration: $iteration"
 echo "Split directory:    $split_dir"
