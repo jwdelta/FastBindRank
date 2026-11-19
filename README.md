@@ -122,8 +122,8 @@ Key parameters for `iterations prepare`:
 | Parameter | Meaning |
 | --- | --- |
 | `--sampling-strategy` | `scaffold` (default) or `random`. |
-| `--sampling-pool` | Optional headerless SMILES/ID subset; otherwise the full indexed library. |
-| `--test-set` | Optional headerless SMILES/ID file containing one compound per scaffold. Use the same file across experiments for comparison. |
+| `--sampling-pool` | Optional headerless SMILES/tID subset; otherwise the full indexed library. |
+| `--test-set` | Optional headerless SMILES/tID file containing one compound per scaffold. Use the same file across experiments for comparison. |
 | `--iteration` | Iteration index to prepare, such as `1`, `2`, or `3`. |
 | `--exclude-ids-file` | Optional extra blacklist of compound IDs that must never be sampled. |
 | `--training-split` | Number of compounds to sample into the training split. Default: `100000`. |
